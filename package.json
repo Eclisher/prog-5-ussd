@@ -1,0 +1,17 @@
+{
+  "name": "prog-5-ussd",
+  "version": "1.0.0",
+  "main": "UssdService.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "lint": "eslint ."
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "devDependencies": {
+    "eslint": "^9.26.0",
+    "eslint-plugin-node": "^11.1.0"
+  }
+}
