@@ -1,89 +1,174 @@
 /* eslint-env node */
-const readline = require('readline');
+const { askWithTimeout, verifyPin } = require('./Helper');
 
-function askWithTimeout(question, timeout = 15000) {
-    const rl = readline.createInterface({
-        input: require('node:process').stdin,
-        output: require('node:process').stdout
-    });
+let balance = 10000;
+let credit = 0;
+const contacts = {
+    '0387799787': 'Deux',
+    '0349069645': 'Koloina'
+};
 
-    return new Promise((resolve) => {
-        const timer = setTimeout(() => {
-            console.log("\n Timeout reached. Returning to main menu...\n");
-            rl.close();
-            resolve(null);
-        }, timeout);
-
-        rl.question(question, (answer) => {
-            clearTimeout(timer);
-            rl.close();
-            resolve(answer);
-        });
-    });
-}
-
-async function ussd() {
-    const pin = "1234";
-    const enteredPin = await askWithTimeout("Enter your PIN: ", 10000);
-    if (enteredPin === pin) {
-        console.log("PIN accepted.");
-    } else {
-        console.log("Incorrect PIN. Exiting...");
+async function ussdStart() {
+    const initCode = await askWithTimeout('Composez #111# pour accéder au service : ');
+    if (initCode !== '#111#') {
+        console.log(' Code invalide. Fin du programme.');
         return;
     }
 
-    console.log("Welcome to the USSD Service");
-    console.log("1. Check Balance");
-    console.log("2. Send Money");
-    console.log("3. Deposit Money");
-    console.log("0. Return to Main Menu");
+    const isVerified = await verifyPin();
+    if (!isVerified) return;
 
-    const choice = await askWithTimeout("Enter your choice: ");
+    return showMainMenu();
+}
+
+async function showMainMenu() {
+    console.log('\n==== YAS et Moi ====');
+    console.log('1 - Mvola');
+    console.log('2 - Services YAS');
+
+    const choice = await askWithTimeout('Votre choix : ');
+    if (choice === '1') return mvolaMenu();
+    if (choice === '2') return servicesYas();
+
+    console.log('Choix invalide.');
+    return showMainMenu();
+}
+
+async function mvolaMenu() {
+    console.log('\n==== Mvola ====');
+    console.log('1 - Acheter Crédit ou Offre YAS');
+    console.log('2 - Transférer argent');
+    console.log('3 - Retrait d\'argent');
+    console.log('4 - Mon compte');
+    console.log('0 - Retour');
+
+    const choice = await askWithTimeout('Votre choix : ');
+
     switch (choice) {
-        case '1': {
-            console.log("Your balance is $100.");
-            ussd();
-            return;
+        case '1':
+            return achatCreditOuOffre();
+        case '2':
+            return transfertArgent();
+        case '3':
+            return retraitArgent();
+        case '4': {
+            const isVerified = await verifyPin();
+            if (isVerified) console.log(`Solde actuel : ${balance} Ar`);
+            return mvolaMenu();
         }
-        case '2': {
-            const number = await askWithTimeout("Enter recipient number or 0 to return menu: ");
-            if (number === '0') {
-                console.log("Returning to main menu...");
-                ussd();
-                return;
-            }
-            const amount = await askWithTimeout("Enter amount to send or 0 to return menu: ");
-            if (amount === '0') {
-                console.log("Returning to main menu...");
-                ussd();
-                return;
-            }
-            console.log(`You have sent $${amount} to ${number}.`);
-            break;
-        }
-        case '3': {
-            const airtimeAmount = await askWithTimeout("Enter amount to buy airtime: ");
-            if (airtimeAmount === '0') {
-                console.log("Returning to main menu...");
-                ussd();
-                return;
-            }
-            console.log(`You have purchased $${airtimeAmount} airtime.`);
-            break;
-        }
-        case '0': {
-            const returnToMain = await askWithTimeout("Do you want to return to the main menu? (yes/no): ");
-            if (returnToMain && returnToMain.toLowerCase() === 'yes') {
-                ussd();
-            } else {
-                console.log("Thank you for using the USSD service. Goodbye!");
-            }
-            break;
-        }
-        default: {
-            console.log("Invalid choice. Please try again.");
-        }
+        case '0':
+            return showMainMenu();
+        default:
+            console.log('Choix invalide.');
+            return mvolaMenu();
     }
 }
 
-ussd();
+
+async function achatCreditOuOffre() {
+    console.log('\n1 - Crédit pour mon numéro');
+    console.log('2 - Crédit pour un autre numéro');
+    console.log('0 - Retour');
+    
+    const type = await askWithTimeout('Votre choix : ');
+    if (type === '0') return mvolaMenu();
+
+    const montant = await askWithTimeout('Montant : ');
+    if (!montant || isNaN(montant)) {
+        console.log('Montant invalide.');
+        return achatCreditOuOffre();
+    }
+
+    let destinataire = '038 67 491 19 ';
+    if (type === '2') {
+        destinataire = await askWithTimeout('Numéro destinataire : ');
+    }
+
+    const isVerified = await verifyPin();
+    if (!isVerified) return;
+
+    if (parseInt(montant, 10) > balance) {
+        console.log(' Solde insuffisant.');
+        return mvolaMenu();
+    }
+
+    balance -= parseInt(montant, 10);
+    credit += parseInt(montant, 10);
+
+    console.log(`Achat de ${montant} Ar pour le numéro ${destinataire}. Solde restant : ${balance} Ar`);
+    return mvolaMenu();
+}
+
+async function transfertArgent() {
+    const numero = await askWithTimeout('Numéro destinataire : ');
+    const montant = await askWithTimeout('Montant à envoyer : ');
+    const frais = 300;
+
+    console.log('\n1 - Oui, je prends en charge les frais de retrait');
+    console.log('2 - Non');
+    console.log('0 - Retour');
+    
+
+    const priseEnCharge = await askWithTimeout('Choix : ');
+    const isVerified = await verifyPin();
+    if (!isVerified) return;
+
+    const nom = contacts[numero] || numero;
+
+    let total = parseInt(montant, 10);
+    if (priseEnCharge === '1') total += frais;
+    if (priseEnCharge === '0') { return mvolaMenu(); }
+
+    if (total > balance) {
+        console.log(' Solde insuffisant.');
+        return mvolaMenu();
+    }
+
+    balance -= total;
+    console.log(`Transfert de ${montant} Ar à ${nom}. Solde restant : ${balance} Ar`);
+    return mvolaMenu();
+}
+
+async function retraitArgent() {
+    console.log('\n1 - Retrait via Agent');
+    console.log('0 - Retour');
+    
+    const choice = await askWithTimeout('Choix : ');
+    if (choice === '1') {
+        const agentNum = await askWithTimeout('Numéro Agent : ');
+        const montant = await askWithTimeout('Montant : ');
+        const isVerified = await verifyPin();
+        if (!isVerified) return;
+
+        if (parseInt(montant, 10) > balance) {
+            console.log(' Solde insuffisant.');
+        } else {
+            balance -= parseInt(montant, 10);
+            console.log(`Retrait de ${montant} Ar via agent ${agentNum}. Solde restant : ${balance} Ar`);
+        } if(choice === '0') {
+            return mvolaMenu();
+        }
+    }
+    return mvolaMenu();
+}
+
+async function servicesYas() {
+    console.log('\n==== Services YAS ====');
+    console.log('1 - Info Crédit');
+    console.log('2 - Mon numéro');
+    console.log('0 - Retour');
+
+    const choice = await askWithTimeout('Votre choix : ');
+    if (choice === '1') {
+        console.log(` Crédit actuel : ${credit} Ar`);
+    } else if (choice === '2') {
+        console.log(' Votre numéro : +261385698574');
+    } else if(choice === '0') {
+        return showMainMenu();
+    } else{
+        console.log('Choix invalide.');
+    }
+    return showMainMenu();
+}
+
+ussdStart();
